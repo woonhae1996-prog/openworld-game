@@ -14,6 +14,7 @@ canvas{display:block}
 #knob{position:absolute;left:40px;top:40px;width:40px;height:40px;border-radius:50%;background:#fffb}
 #jump{position:fixed;right:28px;bottom:50px;width:70px;height:70px;border-radius:50%;background:#fff4;border:2px solid #fff7;color:#fff;display:none;align-items:center;justify-content:center;font-size:14px}
 #name{position:fixed;inset:0;background:#0009;display:flex;flex-direction:column;gap:12px;align-items:center;justify-content:center;color:#fff;z-index:10}#name input{font-size:20px;padding:10px 14px;border-radius:10px;border:0;text-align:center;width:200px}#name button{font-size:18px;padding:10px 28px;border-radius:10px;border:0;background:#66e0ff;font-weight:700}
+#emo{position:fixed;right:10px;top:140px;display:flex;flex-direction:column;gap:8px}#emo button{width:46px;height:46px;border-radius:50%;border:2px solid #fff8;background:#0005;font-size:24px;padding:0}
 #msg{position:fixed;top:45%;left:50%;transform:translate(-50%,-50%);color:#fff;font-size:22px;font-weight:700;text-shadow:0 2px 6px #000a;opacity:0;transition:opacity .5s;pointer-events:none;text-align:center}
 </style>
 </head>
@@ -22,9 +23,10 @@ canvas{display:block}
 <canvas id="mini" width="240" height="240"></canvas>
 <div id="joy"><div id="knob"></div></div>
 <div id="jump">점프</div>
+<div id="emo"></div>
 <div id="msg"></div>
 <div id="name"><div style="font-size:22px;font-weight:700">오픈 월드 탐험 (멀티)</div><input id="nm" maxlength="12" placeholder="닉네임"><button id="go">입장</button></div>
-<div id="help">WASD 이동 · Shift 달리기 · Space 점프 · 마우스 드래그로 시점 회전</div>
+<div id="help">WASD 이동 · Shift 달리기 · Space 점프 · 1~5 이모지 · 마우스 드래그로 시점</div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
@@ -165,7 +167,7 @@ function drawMini(){mc.drawImage(mapImg,0,0,240,240);
 var hud=document.getElementById('hud'),msg=document.getElementById('msg'),score=0,last=performance.now(),time=0,done=false;
 function say(t,ms){msg.textContent=t;msg.style.opacity=1;setTimeout(function(){msg.style.opacity=0},ms||1500)}
 function tick(now){
- var dt=Math.min((now-last)/1000,.05);last=now;time+=dt;dt_=dt;if(started)netTick(now);
+ var dt=Math.min((now-last)/1000,.05);last=now;time+=dt;dt_=dt;if(started)netTick(now);bubbleTick(dt);
  // 이동 입력 (카메라 기준)
  var ix=(keys.KeyD||keys.ArrowRight?1:0)-(keys.KeyA||keys.ArrowLeft?1:0)+joy.x,
      iz=(keys.KeyS||keys.ArrowDown?1:0)-(keys.KeyW||keys.ArrowUp?1:0)+joy.y;
@@ -231,6 +233,7 @@ function connect(){
   chan.on('broadcast',{event:'pos'},function(m){var d=m.payload;if(!d||d.id===myId)return;
    var r=remotes[d.id];if(!r){r=remotes[d.id]=makeRemote(d.id,d.name||'???')}
    r.tx=d.x;r.ty=d.y;r.tz=d.z;r.yaw=d.yaw;r.seen=performance.now();if(!r.init){r.g.position.set(d.x,d.y,d.z);r.init=true}});
+  chan.on('broadcast',{event:'emo'},function(m){var d=m.payload;if(!d||d.id===myId||!remotes[d.id])return;showEmoji(remotes[d.id].g,String(d.e).slice(0,4))});
   chan.on('postgres_changes',{event:'INSERT',schema:'public',table:'crystals_taken'},function(p){takeCrystal(p.new.id,p.new.taken_by)});
   chan.subscribe(function(st){netOK=(st==='SUBSCRIBED');if(netOK)say('멀티 접속 완료!',1500)});
   sb.from('crystals_taken').select('id,taken_by').then(function(r){if(r.data)r.data.forEach(function(x){takeCrystal(x.id,x.taken_by)})});
@@ -244,7 +247,19 @@ function netTick(now){
   online++;var k=Math.min(1,dt_*10);
   r.g.position.x+=(r.tx-r.g.position.x)*k;r.g.position.y+=(r.ty-r.g.position.y)*k;r.g.position.z+=(r.tz-r.g.position.z)*k;r.g.rotation.y=r.yaw}
 }
-var dt_=.016;
+var dt_=.016,bubbles=[],EMOS=['😀','❤️','👍','😂','😮'];
+function showEmoji(group,e){
+ for(var i=bubbles.length-1;i>=0;i--)if(bubbles[i].g===group){group.remove(bubbles[i].sp);bubbles.splice(i,1)}
+ var c=document.createElement('canvas');c.width=c.height=128;var g=c.getContext('2d');g.font='96px sans-serif';g.textAlign='center';g.textBaseline='middle';g.fillText(e,64,70);
+ var sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),depthTest:false,transparent:true}));
+ sp.scale.set(1.8,1.8,1);sp.position.y=3.6;sp.renderOrder=11;group.add(sp);bubbles.push({g:group,sp:sp,t:0})}
+function bubbleTick(dt){for(var i=bubbles.length-1;i>=0;i--){var b=bubbles[i];b.t+=dt;b.sp.position.y=3.6+Math.min(b.t,.4)*1.2;
+ if(b.t>3){b.g.remove(b.sp);bubbles.splice(i,1)}}}
+function sendEmoji(e){showEmoji(player,e);if(netOK)chan.send({type:'broadcast',event:'emo',payload:{id:myId,e:e}})}
+(function(){var bar=document.getElementById('emo');EMOS.forEach(function(e,i){var b=document.createElement('button');b.textContent=e;
+ b.addEventListener('touchstart',function(ev){sendEmoji(e);ev.preventDefault();ev.stopPropagation()},{passive:false});
+ b.addEventListener('mousedown',function(ev){sendEmoji(e);ev.stopPropagation()});bar.appendChild(b)});
+ addEventListener('keydown',function(ev){var n=parseInt(ev.key,10);if(n>=1&&n<=EMOS.length)sendEmoji(EMOS[n-1])})})();
 var started=false;
 document.getElementById('go').onclick=function(){
  myName=(document.getElementById('nm').value||'').trim()||('모험가'+Math.floor(Math.random()*900+100));
