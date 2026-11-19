@@ -156,7 +156,11 @@ var mini=document.getElementById('mini'),mc=mini.getContext('2d'),mapImg=documen
  g.putImageData(im,0,0)})();
 function drawMini(){mc.drawImage(mapImg,0,0,240,240);
  mc.fillStyle='#66e0ff';crystals.forEach(function(c){if(!c.visible)return;mc.fillRect((c.position.x/SIZE+.5)*240-2,(c.position.z/SIZE+.5)*240-2,4,4)});
- mc.fillStyle='#e85d4a';mc.beginPath();mc.arc((pp.x/SIZE+.5)*240,(pp.z/SIZE+.5)*240,5,0,6.28);mc.fill();mc.strokeStyle='#fff';mc.stroke()}
+ mc.font='bold 18px sans-serif';mc.textAlign='center';mc.lineWidth=3;
+ for(var id in remotes){var r=remotes[id];if(!r.init)continue;var rx=(r.g.position.x/SIZE+.5)*240,rz=(r.g.position.z/SIZE+.5)*240;
+  mc.fillStyle=r.color||'#ff0';mc.beginPath();mc.arc(rx,rz,5,0,6.28);mc.fill();mc.strokeStyle='#fff';mc.lineWidth=2;mc.stroke();
+  mc.lineWidth=3;mc.strokeStyle='#000';mc.strokeText(r.name,rx,rz-9);mc.fillStyle='#fff';mc.fillText(r.name,rx,rz-9)}
+ mc.fillStyle='#e85d4a';mc.beginPath();mc.arc((pp.x/SIZE+.5)*240,(pp.z/SIZE+.5)*240,6,0,6.28);mc.fill();mc.strokeStyle='#fff';mc.lineWidth=2;mc.stroke()}
 // ---------- 게임 루프 ----------
 var hud=document.getElementById('hud'),msg=document.getElementById('msg'),score=0,last=performance.now(),time=0,done=false;
 function say(t,ms){msg.textContent=t;msg.style.opacity=1;setTimeout(function(){msg.style.opacity=0},ms||1500)}
@@ -217,7 +221,7 @@ function makeRemote(id,name){var g=new THREE.Group(),hue=0;for(var i=0;i<id.leng
  var mat=new THREE.MeshLambertMaterial({color:new THREE.Color('hsl('+hue+',70%,55%)')});
  var a=new THREE.Mesh(new THREE.CylinderGeometry(.4,.4,.9,10),mat),b=new THREE.Mesh(new THREE.SphereGeometry(.4,10,8),mat),c=new THREE.Mesh(new THREE.SphereGeometry(.4,10,8),mat);
  a.position.y=.8;b.position.y=1.3;c.position.y=.35;g.add(a);g.add(b);g.add(c);g.add(label(name));scene.add(g);
- return {g:g,tx:0,ty:0,tz:0,yaw:0,seen:performance.now(),name:name,init:false}}
+ return {g:g,tx:0,ty:0,tz:0,yaw:0,seen:performance.now(),name:name,init:false,color:'hsl('+hue+',70%,55%)'}}
 function takeCrystal(i,by){var c=crystals[i];if(c&&c.visible){c.visible=false;if(by===myId){score++;say('수정 '+score+' (전체 '+takenCount()+'/'+TOTAL+')',900)}}}
 function takenCount(){var n=0;crystals.forEach(function(c){if(!c.visible)n++});return n}
 function connect(){
