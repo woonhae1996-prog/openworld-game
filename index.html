@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>오픈 월드 탐험 (멀티)</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#9ad0f0;font-family:system-ui,sans-serif;touch-action:none;user-select:none;-webkit-user-select:none}
+canvas{display:block}
+#hud{position:fixed;top:10px;left:10px;color:#fff;text-shadow:0 1px 3px #0008;font-size:15px;line-height:1.5;pointer-events:none}
+#mini{position:fixed;top:10px;right:10px;width:120px;height:120px;border:2px solid #fff;border-radius:8px;background:#0006}
+#help{position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#fff;font-size:12px;text-shadow:0 1px 3px #0008;pointer-events:none;text-align:center}
+#joy{position:fixed;left:24px;bottom:40px;width:120px;height:120px;border-radius:50%;background:#fff3;border:2px solid #fff6;display:none}
+#knob{position:absolute;left:40px;top:40px;width:40px;height:40px;border-radius:50%;background:#fffb}
+#jump{position:fixed;right:28px;bottom:50px;width:70px;height:70px;border-radius:50%;background:#fff4;border:2px solid #fff7;color:#fff;display:none;align-items:center;justify-content:center;font-size:14px}
+#name{position:fixed;inset:0;background:#0009;display:flex;flex-direction:column;gap:12px;align-items:center;justify-content:center;color:#fff;z-index:10}#name input{font-size:20px;padding:10px 14px;border-radius:10px;border:0;text-align:center;width:200px}#name button{font-size:18px;padding:10px 28px;border-radius:10px;border:0;background:#66e0ff;font-weight:700}
+#msg{position:fixed;top:45%;left:50%;transform:translate(-50%,-50%);color:#fff;font-size:22px;font-weight:700;text-shadow:0 2px 6px #000a;opacity:0;transition:opacity .5s;pointer-events:none;text-align:center}
+</style>
+</head>
+<body>
+<div id="hud"></div>
+<canvas id="mini" width="240" height="240"></canvas>
+<div id="joy"><div id="knob"></div></div>
+<div id="jump">점프</div>
+<div id="msg"></div>
+<div id="name"><div style="font-size:22px;font-weight:700">오픈 월드 탐험 (멀티)</div><input id="nm" maxlength="12" placeholder="닉네임"><button id="go">입장</button></div>
+<div id="help">WASD 이동 · Shift 달리기 · Space 점프 · 마우스 드래그로 시점 회전</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+(function(){
+// ---------- 시드 난수 (모든 접속자가 같은 섬을 만들도록) ----------
+var _seed=20261119;
+function R(){_seed|=0;_seed=_seed+0x6D2B79F5|0;var t=Math.imul(_seed^_seed>>>15,1|_seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}
+// ---------- 노이즈 ----------
+function hash(x,y){var s=Math.sin(x*127.1+y*311.7)*43758.5453;return s-Math.floor(s)}
+function vnoise(x,y){var xi=Math.floor(x),yi=Math.floor(y),xf=x-xi,yf=y-yi;
+ var u=xf*xf*(3-2*xf),v=yf*yf*(3-2*yf);
+ var a=hash(xi,yi),b=hash(xi+1,yi),c=hash(xi,yi+1),d=hash(xi+1,yi+1);
+ return a+(b-a)*u+(c-a)*v+(a-b-c+d)*u*v}
+function fbm(x,y){var s=0,a=.5,f=1;for(var i=0;i<5;i++){s+=a*vnoise(x*f,y*f);a*=.5;f*=2}return s}
+var SIZE=400,HALF=SIZE/2,WATER=-1.5;
+function height(x,z){
+ var d=Math.sqrt(x*x+z*z)/HALF; // 섬 모양
+ var h=fbm(x*.008+10,z*.008+10)*34-12;
+ h-=Math.pow(d,3)*30;
+ return h;
+}
+// ---------- 씬 ----------
+var scene=new THREE.Scene();
+scene.background=new THREE.Color(0x9ad0f0);
+scene.fog=new THREE.Fog(0x9ad0f0,80,260);
+var camera=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,.1,600);
+var renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth,innerHeight);
+document.body.prepend(renderer.domElement);
+scene.add(new THREE.HemisphereLight(0xffffff,0x557744,.75));
+var sun=new THREE.DirectionalLight(0xfff2cc,.8);sun.position.set(80,120,40);scene.add(sun);
+// 지형
+var seg=200,geo=new THREE.PlaneGeometry(SIZE,SIZE,seg,seg);geo.rotateX(-Math.PI/2);
+var pos=geo.attributes.position,col=new Float32Array(pos.count*3);
+for(var i=0;i<pos.count;i++){
+ var x=pos.getX(i),z=pos.getZ(i),h=height(x,z);pos.setY(i,h);
+ var c;
+ if(h<WATER+1)c=[.85,.78,.5];
+ else if(h<8)c=[.3+hash(x,z)*.06,.6,.25];
+ else if(h<15)c=[.4,.45,.3];
+ else if(h<20)c=[.5,.48,.45];
+ else c=[.95,.95,.98];
+ col[i*3]=c[0];col[i*3+1]=c[1];col[i*3+2]=c[2];
+}
+geo.setAttribute('color',new THREE.BufferAttribute(col,3));geo.computeVertexNormals();
+scene.add(new THREE.Mesh(geo,new THREE.MeshLambertMaterial({vertexColors:true})));
+var water=new THREE.Mesh(new THREE.PlaneGeometry(1200,1200).rotateX(-Math.PI/2),
+ new THREE.MeshLambertMaterial({color:0x2f7fc4,transparent:true,opacity:.75}));
+water.position.y=WATER;scene.add(water);
+// 나무 & 바위 (인스턴싱)
+var trunkG=new THREE.CylinderGeometry(.25,.35,2,6),leafG=new THREE.ConeGeometry(1.6,4,7),rockG=new THREE.DodecahedronGeometry(1,0);
+var TREES=700,trunks=new THREE.InstancedMesh(trunkG,new THREE.MeshLambertMaterial({color:0x6b4a2b}),TREES),
+ leaves=new THREE.InstancedMesh(leafG,new THREE.MeshLambertMaterial({color:0x2f8f3f}),TREES),
+ rocks=new THREE.InstancedMesh(rockG,new THREE.MeshLambertMaterial({color:0x888888}),150);
+var m=new THREE.Matrix4(),q=new THREE.Quaternion(),s=new THREE.Vector3(),p=new THREE.Vector3();
+var tn=0,rn=0,treePos=[];
+for(var t=0;t<6000&&tn<TREES;t++){
+ var x=(R()-.5)*SIZE,z=(R()-.5)*SIZE,h=height(x,z);
+ if(h<WATER+1.5||h>14)continue;
+ if(vnoise(x*.03,z*.03)<.4)continue; // 숲 군집
+ var sc=.8+R()*.9;
+ s.set(sc,sc,sc);p.set(x,h+sc,z);m.compose(p,q,s);trunks.setMatrixAt(tn,m);
+ p.set(x,h+2*sc+1.6*sc,z);m.compose(p,q,s);leaves.setMatrixAt(tn,m);
+ treePos.push([x,z,.6*sc]);tn++;
+}
+trunks.count=leaves.count=tn;scene.add(trunks);scene.add(leaves);
+var rockPos=[];
+for(var t=0;t<3000&&rn<150;t++){
+ var x=(R()-.5)*SIZE,z=(R()-.5)*SIZE,h=height(x,z);
+ if(h<WATER)continue;
+ var sc=.8+R()*2;
+ s.set(sc,sc*.7,sc);p.set(x,h+sc*.2,z);
+ q.setFromEuler(new THREE.Euler(R(),R()*6,0));
+ m.compose(p,q,s);rocks.setMatrixAt(rn,m);rockPos.push([x,z,sc*.9]);rn++;
+}
+rocks.count=rn;scene.add(rocks);q.identity();
+var blockers=treePos.concat(rockPos);
+// 수정 (수집품)
+var crystals=[],cG=new THREE.OctahedronGeometry(.7),cM=new THREE.MeshLambertMaterial({color:0x66e0ff,emissive:0x2288aa});
+var TOTAL=25;
+for(var t=0;t<5000&&crystals.length<TOTAL;t++){
+ var x=(R()-.5)*SIZE*.9,z=(R()-.5)*SIZE*.9,h=height(x,z);
+ if(h<WATER+.5)continue;
+ var c=new THREE.Mesh(cG,cM);c.position.set(x,h+1.5,z);scene.add(c);crystals.push(c);
+}
+// 캐릭터
+var player=new THREE.Group();
+var body=new THREE.Group();
+var bm=new THREE.MeshLambertMaterial({color:0xe85d4a});
+var torso=new THREE.Mesh(new THREE.CylinderGeometry(.4,.4,.9,10),bm);torso.position.y=0;body.add(torso);
+var head=new THREE.Mesh(new THREE.SphereGeometry(.4,10,8),bm);head.position.y=.5;body.add(head);
+var feet=new THREE.Mesh(new THREE.SphereGeometry(.4,10,8),bm);feet.position.y=-.45;body.add(feet);
+body.position.y=.8;player.add(body);
+var nose=new THREE.Mesh(new THREE.BoxGeometry(.2,.2,.3),new THREE.MeshLambertMaterial({color:0xffffff}));
+nose.position.set(0,1.1,.4);player.add(nose);
+scene.add(player);
+var pp={x:0,z:0,y:0,vy:0,yaw:0,onGround:true};
+// 시작점: 육지 찾기
+(function(){for(var r=0;r<150;r+=3)for(var a=0;a<6.28;a+=.3){var x=Math.cos(a)*r,z=Math.sin(a)*r;if(height(x,z)>1&&height(x,z)<6){pp.x=x;pp.z=z;return}}})();
+pp.y=height(pp.x,pp.z);
+// ---------- 입력 ----------
+var keys={},camYaw=0,camPitch=.45,drag=null,isTouch='ontouchstart' in window;
+addEventListener('keydown',function(e){keys[e.code]=true;if(e.code==='Space')e.preventDefault()});
+addEventListener('keyup',function(e){keys[e.code]=false});
+var joy={x:0,y:0},joyEl=document.getElementById('joy'),knob=document.getElementById('knob'),jumpEl=document.getElementById('jump');
+var joyId=null,jumpReq=false;
+if(isTouch){joyEl.style.display='block';jumpEl.style.display='flex';document.getElementById('help').textContent='왼쪽 조이스틱 이동 · 오른쪽 화면 드래그로 시점'}
+function joyMove(t){var r=joyEl.getBoundingClientRect(),dx=t.clientX-(r.left+60),dy=t.clientY-(r.top+60),l=Math.hypot(dx,dy),mx=50;
+ if(l>mx){dx*=mx/l;dy*=mx/l}knob.style.left=(40+dx)+'px';knob.style.top=(40+dy)+'px';joy.x=dx/mx;joy.y=dy/mx}
+joyEl.addEventListener('touchstart',function(e){joyId=e.changedTouches[0].identifier;joyMove(e.changedTouches[0]);e.preventDefault()},{passive:false});
+jumpEl.addEventListener('touchstart',function(e){jumpReq=true;e.preventDefault()},{passive:false});
+function resetJoy(){joyId=null;joy.x=joy.y=0;knob.style.left='40px';knob.style.top='40px'}
+addEventListener('touchmove',function(e){for(var i=0;i<e.changedTouches.length;i++){var t=e.changedTouches[i];
+ if(t.identifier===joyId)joyMove(t);
+ else if(drag&&drag.id===t.identifier){camYaw-=(t.clientX-drag.x)*.006;camPitch=Math.max(.1,Math.min(1.2,camPitch+(t.clientY-drag.y)*.004));drag.x=t.clientX;drag.y=t.clientY}}},{passive:false});
+addEventListener('touchend',function(e){for(var i=0;i<e.changedTouches.length;i++){var t=e.changedTouches[i];if(t.identifier===joyId)resetJoy();if(drag&&drag.id===t.identifier)drag=null}});
+renderer.domElement.addEventListener('touchstart',function(e){var t=e.changedTouches[0];drag={id:t.identifier,x:t.clientX,y:t.clientY}},{passive:true});
+renderer.domElement.addEventListener('mousedown',function(e){drag={id:'m',x:e.clientX,y:e.clientY}});
+addEventListener('mouseup',function(){if(drag&&drag.id==='m')drag=null});
+addEventListener('mousemove',function(e){if(drag&&drag.id==='m'){camYaw-=(e.clientX-drag.x)*.006;camPitch=Math.max(.1,Math.min(1.2,camPitch+(e.clientY-drag.y)*.004));drag.x=e.clientX;drag.y=e.clientY}});
+addEventListener('resize',function(){camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
+// ---------- 미니맵 ----------
+var mini=document.getElementById('mini'),mc=mini.getContext('2d'),mapImg=document.createElement('canvas');mapImg.width=mapImg.height=120;
+(function(){var g=mapImg.getContext('2d'),im=g.createImageData(120,120);
+ for(var j=0;j<120;j++)for(var i=0;i<120;i++){var h=height((i/120-.5)*SIZE,(j/120-.5)*SIZE),k=(j*120+i)*4,c;
+  if(h<WATER)c=[47,127,196];else if(h<1)c=[217,199,128];else if(h<8)c=[80,160,70];else if(h<15)c=[110,120,80];else c=[220,220,230];
+  im.data[k]=c[0];im.data[k+1]=c[1];im.data[k+2]=c[2];im.data[k+3]=255}
+ g.putImageData(im,0,0)})();
+function drawMini(){mc.drawImage(mapImg,0,0,240,240);
+ mc.fillStyle='#66e0ff';crystals.forEach(function(c){if(!c.visible)return;mc.fillRect((c.position.x/SIZE+.5)*240-2,(c.position.z/SIZE+.5)*240-2,4,4)});
+ mc.fillStyle='#e85d4a';mc.beginPath();mc.arc((pp.x/SIZE+.5)*240,(pp.z/SIZE+.5)*240,5,0,6.28);mc.fill();mc.strokeStyle='#fff';mc.stroke()}
+// ---------- 게임 루프 ----------
+var hud=document.getElementById('hud'),msg=document.getElementById('msg'),score=0,last=performance.now(),time=0,done=false;
+function say(t,ms){msg.textContent=t;msg.style.opacity=1;setTimeout(function(){msg.style.opacity=0},ms||1500)}
+function tick(now){
+ var dt=Math.min((now-last)/1000,.05);last=now;time+=dt;dt_=dt;if(started)netTick(now);
+ // 이동 입력 (카메라 기준)
+ var ix=(keys.KeyD||keys.ArrowRight?1:0)-(keys.KeyA||keys.ArrowLeft?1:0)+joy.x,
+     iz=(keys.KeyS||keys.ArrowDown?1:0)-(keys.KeyW||keys.ArrowUp?1:0)+joy.y;
+ var il=Math.hypot(ix,iz);if(il>1){ix/=il;iz/=il;il=1}
+ var inWater=pp.y<WATER-.2;
+ var speed=(keys.ShiftLeft||keys.ShiftRight?11:6)*(inWater?.5:1);
+ if(il>.05){
+  var sy=Math.sin(camYaw),cy=Math.cos(camYaw);
+  var dx=(ix*cy+iz*sy)*speed*dt,dz=(-ix*sy+iz*cy)*speed*dt;
+  var nx=pp.x+dx,nz=pp.z+dz,ok=true;
+  for(var i=0;i<blockers.length;i++){var b=blockers[i],ex=nx-b[0],ez=nz-b[1];if(ex*ex+ez*ez<(b[2]+.4)*(b[2]+.4)){ok=false;break}}
+  var nh=height(nx,nz);
+  if(Math.abs(nx)>HALF-2||Math.abs(nz)>HALF-2)ok=false;
+  if(nh-pp.y>1.2&&pp.onGround)ok=false; // 너무 가파른 경사
+  if(ok){pp.x=nx;pp.z=nz}
+  pp.yaw=Math.atan2(dx,dz);
+ }
+ // 점프 & 중력
+ var gh=Math.max(height(pp.x,pp.z),WATER-1.5);
+ if((keys.Space||jumpReq)&&pp.onGround){pp.vy=8;pp.onGround=false}
+ jumpReq=false;
+ pp.vy-=22*dt;pp.y+=pp.vy*dt;
+ if(pp.y<=gh){pp.y=gh;pp.vy=0;pp.onGround=true}else if(pp.y-gh>.15)pp.onGround=false;
+ player.position.set(pp.x,pp.y,pp.z);
+ player.rotation.y+= (pp.yaw-player.rotation.y+Math.PI*3)%(Math.PI*2)-Math.PI;
+ body.position.y=.8+(il>.05&&pp.onGround?Math.abs(Math.sin(time*10))*.12:0);
+ // 수정
+ crystals.forEach(function(c,i){if(!c.visible)return;c.rotation.y=time*2+i;c.position.y=height(c.position.x,c.position.z)+1.5+Math.sin(time*2+i)*.25;
+  var dx=c.position.x-pp.x,dz=c.position.z-pp.z;
+  if(started&&dx*dx+dz*dz<2.5&&Math.abs(c.position.y-pp.y-1)<2.5){takeCrystal(i,myId);if(sb)sb.from('crystals_taken').insert({id:i,taken_by:myId}).then(function(){});
+   if(takenCount()>=TOTAL&&!done){done=true;say('🎉 모든 수정을 함께 모았어요!',6000)}}});
+ // 카메라
+ var dist=9,cx=pp.x+Math.sin(camYaw)*Math.cos(camPitch)*dist,cz=pp.z+Math.cos(camYaw)*Math.cos(camPitch)*dist,cyy=pp.y+2+Math.sin(camPitch)*dist;
+ cyy=Math.max(cyy,height(cx,cz)+1);
+ camera.position.set(cx,cyy,cz);camera.lookAt(pp.x,pp.y+1.5,pp.z);
+ water.position.y=WATER+Math.sin(time)*.08;
+ hud.innerHTML='💎 내 '+score+' · 전체 '+takenCount()+'/'+TOTAL+'<br>👥 접속 '+online+'명<br>고도 '+Math.round(pp.y)+'m'+(inWater?' · 수영 중':'');
+ drawMini();
+ renderer.render(scene,camera);
+ requestAnimationFrame(tick);
+}
+
+// ---------- 멀티플레이 ----------
+var SB_URL='https://bcqvqaikyfgzimjmlbfj.supabase.co',SB_KEY='sb_publishable_5LWmOSlxQE_WF9TOpvP7VQ_OaEccaGB';
+var myId=Math.random().toString(36).slice(2,8)+Date.now().toString(36).slice(-3);
+var myName='',sb=null,chan=null,remotes={},online=1,lastSend=0,netOK=false;
+// R()은 시드 고정이라 myId는 시간 기반 보조값과 섞음
+myId=(Date.now().toString(36)+Math.floor(performance.now()*1000).toString(36)+Math.floor(Math.random()*1e6).toString(36));
+function label(text){var c=document.createElement('canvas');c.width=256;c.height=64;var g=c.getContext('2d');
+ g.font='bold 30px sans-serif';g.textAlign='center';g.fillStyle='#fff';g.strokeStyle='#000';g.lineWidth=5;g.strokeText(text,128,44);g.fillText(text,128,44);
+ var sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),depthTest:false}));sp.scale.set(4,1,1);sp.position.y=2.6;sp.renderOrder=10;return sp}
+function makeRemote(id,name){var g=new THREE.Group(),hue=0;for(var i=0;i<id.length;i++)hue=(hue*31+id.charCodeAt(i))%360;
+ var mat=new THREE.MeshLambertMaterial({color:new THREE.Color('hsl('+hue+',70%,55%)')});
+ var a=new THREE.Mesh(new THREE.CylinderGeometry(.4,.4,.9,10),mat),b=new THREE.Mesh(new THREE.SphereGeometry(.4,10,8),mat),c=new THREE.Mesh(new THREE.SphereGeometry(.4,10,8),mat);
+ a.position.y=.8;b.position.y=1.3;c.position.y=.35;g.add(a);g.add(b);g.add(c);g.add(label(name));scene.add(g);
+ return {g:g,tx:0,ty:0,tz:0,yaw:0,seen:performance.now(),name:name,init:false}}
+function takeCrystal(i,by){var c=crystals[i];if(c&&c.visible){c.visible=false;if(by===myId){score++;say('수정 '+score+' (전체 '+takenCount()+'/'+TOTAL+')',900)}}}
+function takenCount(){var n=0;crystals.forEach(function(c){if(!c.visible)n++});return n}
+function connect(){
+ try{
+  sb=supabase.createClient(SB_URL,SB_KEY);
+  chan=sb.channel('world',{config:{broadcast:{self:false}}});
+  chan.on('broadcast',{event:'pos'},function(m){var d=m.payload;if(!d||d.id===myId)return;
+   var r=remotes[d.id];if(!r){r=remotes[d.id]=makeRemote(d.id,d.name||'???')}
+   r.tx=d.x;r.ty=d.y;r.tz=d.z;r.yaw=d.yaw;r.seen=performance.now();if(!r.init){r.g.position.set(d.x,d.y,d.z);r.init=true}});
+  chan.on('postgres_changes',{event:'INSERT',schema:'public',table:'crystals_taken'},function(p){takeCrystal(p.new.id,p.new.taken_by)});
+  chan.subscribe(function(st){netOK=(st==='SUBSCRIBED');if(netOK)say('멀티 접속 완료!',1500)});
+  sb.from('crystals_taken').select('id,taken_by').then(function(r){if(r.data)r.data.forEach(function(x){takeCrystal(x.id,x.taken_by)})});
+ }catch(e){say('서버 연결 실패 — 혼자 플레이합니다',3000)}
+}
+function netTick(now){
+ if(netOK&&now-lastSend>100){lastSend=now;chan.send({type:'broadcast',event:'pos',payload:{id:myId,name:myName,x:pp.x,y:pp.y,z:pp.z,yaw:player.rotation.y}})}
+ online=1;
+ for(var id in remotes){var r=remotes[id];
+  if(now-r.seen>4000){scene.remove(r.g);delete remotes[id];continue}
+  online++;var k=Math.min(1,dt_*10);
+  r.g.position.x+=(r.tx-r.g.position.x)*k;r.g.position.y+=(r.ty-r.g.position.y)*k;r.g.position.z+=(r.tz-r.g.position.z)*k;r.g.rotation.y=r.yaw}
+}
+var dt_=.016;
+var started=false;
+document.getElementById('go').onclick=function(){
+ myName=(document.getElementById('nm').value||'').trim()||('모험가'+Math.floor(Math.random()*900+100));
+ document.getElementById('name').style.display='none';started=true;connect();
+ say('섬을 탐험하며 수정을 모아보세요!',3000)};
+renderer.render(scene,camera);
+requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
