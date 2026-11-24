@@ -42,7 +42,8 @@ h1{margin:0;font-size:clamp(22px,5vw,34px);font-weight:400;color:var(--gold);tex
 .gcard:active{transform:translateY(4px)}
 .gcard b{font-size:22px;font-weight:400;color:var(--gold)}.gcard small{font-size:14px;opacity:1}.gcard i{font-style:normal;font-size:14px;color:#ffd0e2}
 .gi{font-size:44px;line-height:1.1}
-@media (max-height:520px){.card{padding:10px 16px;gap:4px}#pv{width:130px;height:110px}#aName{font-size:20px}h1{font-size:22px}.big{font-size:19px;padding:8px 24px}.gcard{width:185px;padding:10px}.gi{font-size:34px}.hint{font-size:12px}.sel button{width:34px;height:34px}.res{font-size:16px}}
+#hub .card{max-width:96vw}
+@media (max-height:520px){#hub .menurow{gap:10px}.card{padding:10px 16px;gap:4px}#pv{width:130px;height:110px}#aName{font-size:20px}h1{font-size:22px}.big{font-size:19px;padding:8px 24px}.gcard{width:172px;padding:10px}.gi{font-size:34px}.hint{font-size:12px}.sel button{width:34px;height:34px}.res{font-size:16px}}
 #rot{position:fixed;left:50%;top:8px;transform:translateX(-50%);background:var(--card);border:3px solid var(--line);padding:5px 14px;font-size:13px;display:none;z-index:6}
 @media (orientation:portrait){#rot.show{display:block}}
 </style>
@@ -62,7 +63,8 @@ h1{margin:0;font-size:clamp(22px,5vw,34px);font-weight:400;color:var(--gold);tex
   <div class="menurow">
     <button class="gcard" id="gRun"><span class="gi">🪙</span><b>코인런</b><small>달리고 점프하고<br>코인을 모아요</small><i id="gRunBest"></i></button>
     <button class="gcard" id="gRace"><span class="gi">🏁</span><b>레일 레이스</b><small>5개 레일을 타고<br>위로 달려 결승선!</small><i id="gRaceBest"></i></button>
-    <button class="gcard" id="gMan"><span class="gi">🛞</span><b>매뉴얼 버티기</b><small>흔들리는 게이지를 잡고<br>몇 초 버티나? 기록 대결</small><i id="gManBest"></i></button>
+    <button class="gcard" id="gMan"><span class="gi">🛞</span><b>매뉴얼 버티기</b><small>게이지를 잡고<br>몇 초 버티나?</small><i id="gManBest"></i></button>
+    <button class="gcard" id="gPro"><span class="gi">🎲</span><b>프로까지 가자</b><small>확률 뚫고 승급!<br>멈출까? 더 갈까?</small><i id="gProBest"></i></button>
   </div>
   <div class="hint">동물·보드·코인은 모든 게임에서 같이 써요</div>
 </div></div>
@@ -111,7 +113,7 @@ function mix(a,b,k){return rgb(mixA(a,b,k))}
 function shade(col,a){const[r,g,b]=hex(col),t=a<0?0:255,k=Math.abs(a);return`rgb(${r+(t-r)*k|0},${g+(t-g)*k|0},${b+(t-b)*k|0})`}
 
 /* ---------- save ---------- */
-let S={coins:0,best:0,wins:0,mbest:0,owned:['cat'],animal:'cat',board:'skate'};
+let S={coins:0,best:0,wins:0,mbest:0,pbest:0,owned:['cat'],animal:'cat',board:'skate'};
 try{const j=JSON.parse(localStorage.getItem('bac_v1')||'null');if(j)S=Object.assign(S,j)}catch(e){}
 function save(){try{localStorage.setItem('bac_v1',JSON.stringify(S))}catch(e){}}
 
@@ -405,6 +407,7 @@ function startRun(){
   $('hub').classList.add('hide');$('menu').classList.add('hide');$('over').classList.add('hide');$('pause').classList.add('hide');
   if(mode==='race'){startRace();state='play';setUI();return}
   if(mode==='manual'){startManual();state='play';setUI();return}
+  if(mode==='pro'){startPro();state='play';setUI();return}
   resetWorld();P=newPlayer();P.y=groundY(P.x);P.safe={x:P.x,y:P.y};
   cam.x=P.x-VW*.3;cam.y=P.y-40;runT=0;state='play';setUI();toast('출발!',1.4);
 }
@@ -969,12 +972,181 @@ function renderManual(c){
   if(M.fall)txt(c,'쿵!',cx,VH*.48,120,'#ff8f8f','center');
 }
 
+
+/* ---------- 프로까지 가자 ---------- */
+let PR=null;
+const PST=[
+ {n:'입문 1일차',p:100},
+ {n:'크루 막내',p:95},
+ {n:'릴스 떡상',p:85},
+ {n:'보드샵 앰버서더',p:75},
+ {n:'브랜드 스폰',p:62},
+ {n:'시그니처 데크 출시',p:50},
+ {n:'월드 챔피언',p:40}];
+const PMAX=PST.length-1;
+const PEV=[
+ {e:'🧊',n:'오늘 바닥 대리석',d:15},{e:'📣',n:'크루가 응원 중',d:10},{e:'⚙',n:'새 베어링 장착',d:10},{e:'😎',n:'컨디션 최고',d:12},{e:'🍗',n:'치킨 먹고 힘남',d:8},{e:'🌬',n:'순풍이 분다',d:8},
+ {e:'🪨',n:'돌멩이 밟음',d:-20},{e:'☔',n:'비가 온다',d:-12},{e:'🛒',n:'장비병 도지는 중',d:-10},{e:'🚧',n:'스피드킬러 출몰',d:-15},{e:'🍜',n:'어제 야식 과식',d:-8},{e:'🌫',n:'바닥이 자갈밭',d:-15},
+ {e:'☁',n:'평범한 하루',d:0},{e:'🛹',n:'무난한 컨디션',d:0},{e:'🕰',n:'그냥 그런 오후',d:0}];
+const PFAIL=[null,
+ ['첫 푸시에 엉덩방아','보드를 거꾸로 타서 민망한 하루','출근 첫날 늦잠으로 포기'],
+ ['릴스 찍다 넘어지는 영상이 떡상','알고리즘이 나를 외면함','BGM 저작권 신고 당함'],
+ ['면접에서 장비병 들킴','샵 사장님이 내 데크 보고 침묵','계약서 읽다 졸음'],
+ ['계약 직전 돌멩이 밟음','담당자가 내 계정 과거글 발견','스티커값 감당 못 하고 파산'],
+ ['그립테이프 거꾸로 붙여 출시','양산 직전 파산','첫 출시 데크가 휘어짐'],
+ ['결승 중 스피드킬러 맞고 강제 은퇴','결승 직전 장비병 도져서 파산','우승 직전 베어링 분실']];
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+function proEvent(){const r=Math.random();const pool=r<.35?PEV.filter(x=>x.d>0):r<.7?PEV.filter(x=>x.d<0):PEV.filter(x=>x.d===0);return pick(pool)}
+function startPro(){
+  PR={stage:0,phase:'choose',t:0,ev:proEvent(),tt:0,pos:0,bonus:0,bl:'',fp:0,ok:false,roll:0,msg:'',reason:'',parts:[],btns:[],fall:0,hop:0,done:false,share:''};
+}
+const proBase=()=>clamp(PST[PR.stage+1].p+PR.ev.d,3,97);
+function proAct(a){
+  if(!PR||state!=='play')return;
+  if(PR.phase==='choose'){
+    if(a==='go'){PR.phase='timing';PR.tt=0;PR.pos=0;SFX.go()}
+    else if(a==='stop'&&PR.stage>0){PR.phase='stopped';PR.t=0;SFX.power()}
+  }else if(PR.phase==='timing'&&a==='go')proLock();
+}
+function proTap(lx,ly){
+  if(!PR)return;
+  for(const b of PR.btns)if(lx>=b.x&&lx<=b.x+b.w&&ly>=b.y&&ly<=b.y+b.h){proAct(b.id);return}
+  if(PR.phase==='timing')proLock();
+}
+function proLock(){
+  const a=Math.abs(PR.pos),hw=Math.max(.1,.18-.012*PR.stage);
+  PR.bonus=a<=hw?12:a<=.42?5:0;PR.bl=PR.bonus===12?'PERFECT! +12%':PR.bonus===5?'굿! +5%':'아쉬워 +0%';
+  PR.fp=clamp(proBase()+PR.bonus,3,98);PR.ok=Math.random()*100<PR.fp;
+  PR.phase='roll';PR.t=0;PR.roll=0;SFX.tick();
+}
+function proBurst(x,y){for(let i=0;i<26;i++)PR.parts.push({x,y,vx:rnd(-260,260),vy:rnd(-520,-120),life:rnd(.7,1.2),col:pick(['#ffd23f','#ff7f9d','#5df2ff','#8dff8d','#fff'])})}
+function updatePro(dt){
+  PR.t+=dt;
+  for(const p of PR.parts){p.vy+=900*dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.life-=dt}
+  PR.parts=PR.parts.filter(p=>p.life>0);
+  if(PR.phase==='timing'){PR.tt+=dt;PR.pos=Math.sin(PR.tt*(2.6+.5*PR.stage));if(PR.tt>3.6)proLock()}
+  else if(PR.phase==='roll'){
+    if(Math.floor(PR.t*14)!==Math.floor((PR.t-dt)*14))SFX.tick();
+    if(PR.t>1.1){
+      if(PR.ok){PR.stage++;PR.phase='up';PR.t=0;SFX.power();proBurst(PR.ax||VW*.3,PR.ay||VH*.5)}
+      else{PR.phase='fail';PR.t=0;PR.reason=pick(PFAIL[PR.stage+1]);SFX.hurt()}
+    }
+  }else if(PR.phase==='up'){
+    if(PR.t>1){
+      if(PR.stage>=PMAX)proFinish('win');
+      else{PR.ev=proEvent();PR.phase='choose';PR.t=0}
+    }
+  }else if(PR.phase==='fail'){if(PR.t>1.5)proFinish('fail')}
+  else if(PR.phase==='stopped'){if(PR.t>.8)proFinish('stop')}
+}
+function proFinish(kind){
+  if(PR.done)return;PR.done=true;
+  const s=PR.stage,url=location.href.split('?')[0];let coins=0,title,html;
+  if(kind==='fail'){
+    title='💥 부상 초기화…';
+    html=`<b style="font-size:1.2em">${PR.reason}</b><br>${PST[s+1].n} 도전 실패 (${s}단계에서 탈락)<br>기록은 저장되지 않았어요`;
+    PR.share=`🎲 동네 보더에서 프로까지\n${PST[s+1].n} 도전하다 "${PR.reason}" 💥 (${s}단계에서 부상 초기화)\n너도 해봐 👉 ${url}`;
+    coins=1;S.coins+=coins;
+  }else{
+    const nb=s>S.pbest;if(nb)S.pbest=s;
+    coins=kind==='win'?100:s*6;S.coins+=coins;
+    title=kind==='win'?'🏆 월드 챔피언!':nb?'🎉 신기록 저장!':'💾 기록 저장!';
+    html=`<b style="font-size:1.4em">${PST[s].n}</b> (${s}/${PMAX}단계)<br>🪙 +${coins} · 최고 <b>${S.pbest}</b>단계`;
+    PR.share=kind==='win'?`🏆 동네 보더에서 프로까지 — 월드 챔피언 달성!\n6단계 확률을 전부 뚫었다 😎 너도 해봐 👉 ${url}`:`🎲 동네 보더에서 프로까지\n${PST[s].n} (${s}/${PMAX}단계) 에서 멈추고 기록 저장! 너는 몇 단계? 👉 ${url}`;
+  }
+  save();setHubStats();
+  state='over';$('ovT').textContent=title;$('ovR').innerHTML=html+(kind==='fail'?`<br>🪙 +${coins}`:'');
+  $('share').style.display='';$('over').classList.remove('hide');setUI();
+}
+function pbtn(c,id,label,x,y,w,h,col,dim){
+  c.fillStyle='#1b0f26';c.fillRect(x-6,y-6,w+12,h+12);
+  c.fillStyle=col;c.fillRect(x,y,w,h);
+  c.fillStyle='rgba(255,255,255,.35)';c.fillRect(x,y,w,9);c.fillRect(x,y,9,h);
+  c.fillStyle='rgba(0,0,0,.28)';c.fillRect(x,y+h-9,w,9);c.fillRect(x+w-9,y,9,h);
+  if(dim){c.fillStyle='rgba(20,10,34,.45)';c.fillRect(x,y,w,h)}
+  const fs=Math.min(42,w/(label.length*1.12));txt(c,label,x+w/2,y+h/2+3,fs,'#fff','center');
+  if(!dim)PR.btns.push({id,x:x-6,y:y-6,w:w+12,h:h+12});
+}
+function renderPro(c){
+  const A=BIOMES[1],land=VW>VH*.9,cx=VW/2;
+  PR.btns=[];
+  drawSky(c,A,A,0,14);
+  disc(c,VW*.9,VH*.14,30,'#fff4a8');
+  c.fillStyle='rgba(255,255,255,.85)';
+  for(let n=0;n<6;n++){const w=VW+300,x=((n*270-performance.now()*.01)%w+w)%w-150,y=VH*.06+hs(n*5.5)*VH*.2;fr(c,c.fillStyle,x,y,66,12);fr(c,c.fillStyle,x+12,y-9,36,9)}
+  c.fillStyle=A.far;for(let x=0;x<=VW;x+=12){const h=Math.sin(x*.006)*34+Math.sin(x*.0131+2)*18+60;c.fillRect(x,sn(VH*.78-h),12,VH)}
+  c.fillStyle='#46b83d';for(let x=0;x<=VW;x+=12){const h=Math.sin(x*.01+1)*20+30;c.fillRect(x,sn(VH*.84-h),12,VH)}
+  // stairs
+  const ax=land?VW*.04:VW*.05,aw=land?VW*.56:VW*.9,base=land?VH*.9:VH*.5,ah=land?VH*.66:VH*.34,N=PMAX+1,sw=aw/N;
+  const topY=i=>base-(i+1)*ah/N;
+  for(let i=0;i<N;i++){
+    const x=sn(ax+i*sw),y=sn(topY(i)),w=sn(sw)+3;
+    c.fillStyle='#1b0f26';c.fillRect(x-3,y-3,w+3,base-y+6);
+    c.fillStyle=i<=PR.stage?'#b9733a':'#8a5a30';c.fillRect(x,y,w-3,base-y+3);
+    c.fillStyle=i<=PR.stage?'#62d12f':'#4a9a28';c.fillRect(x,y,w-3,18);
+    c.fillStyle='rgba(0,0,0,.14)';c.fillRect(x,y+18,w-3,6);
+    txt(c,i===PMAX?'🏆':String(i),x+w/2,y+48,i===PMAX?36:33,'#fff','center');
+  }
+  // rider
+  const sc=land?4:4;let st=PR.stage,fx=0,fy=0,rot=0,tx=ax+st*sw+sw/2,ty=topY(st);
+  if(PR.phase==='up'){const u=clamp(PR.t/.6,0,1),pa=ax+(st-1)*sw+sw/2,pb=ax+st*sw+sw/2,ya=topY(st-1),yb=topY(st);tx=lerp(pa,pb,u);ty=lerp(ya,yb,u)-Math.sin(u*Math.PI)*120}
+  if(PR.phase==='fail'){const f=PR.t;tx+=f*260;ty+=-Math.max(0,360*f-900*f*f)+0;rot=f*8}
+  if(PR.phase==='stopped'||PR.phase==='choose'){ty-=(PR.phase==='stopped'&&Math.floor(PR.t*8)%2)?18:0}
+  PR.ax=tx;PR.ay=ty-60;
+  c.save();c.translate(sn(tx),sn(ty));if(PR.phase!=='fail'||PR.t<.01){}c.rotate(rot);
+  drawRider(c,S.animal,S.board,{t:PR.t*.2,air:PR.phase==='up'||PR.phase==='fail',sc});
+  c.restore();
+  for(const p of PR.parts)fr(c,p.col,p.x,p.y,9,9);
+  // header
+  txt(c,`${PR.stage}/${PMAX}단계 · ${PST[PR.stage].n}`,land?ax:cx,land?36:120,Math.min(42,VW/(land?30:17)),'#ffd36b',land?'left':'center');
+  // panel
+  const px=land?VW*.63:VW*.06,py=land?VH*.14:VH*.56,pw=land?VW*.34:VW*.88,ph=land?VH*.76:VH*.42,mx=px+pw/2;
+  c.fillStyle='#1b0f26';c.fillRect(sn(px)-9,sn(py)-9,sn(pw)+18,sn(ph)+18);c.fillStyle='#2b1b36';c.fillRect(sn(px),sn(py),sn(pw),sn(ph));
+  c.fillStyle='#7a5a96';c.fillRect(sn(px),sn(py),sn(pw),6);c.fillRect(sn(px),sn(py+ph)-6,sn(pw),6);
+  const fit=(s,mw,fs)=>Math.min(fs,mw/(s.length*1.12)),bh=land?78:84,bw=pw-60;
+  const lineH=ph/10;
+  if(PR.phase==='choose'||PR.phase==='stopped'){
+    const nx=PST[Math.min(PMAX,PR.stage+1)],p=proBase(),pc=p>=60?'#8dff8d':p>=35?'#ffd23f':'#ff8f8f';
+    txt(c,'다음 도전',mx,py+lineH*.9,33,'#ffe9f5','center');
+    txt(c,nx.n,mx,py+lineH*2,fit(nx.n,pw-40,48),'#ffd36b','center');
+    txt(c,p+'%',mx,py+lineH*3.7,Math.min(110,ph/4.4),pc,'center');
+    txt(c,'성공 확률',mx,py+lineH*5.1,30,'#fff','center');
+    const el=`${PR.ev.e} ${PR.ev.n} ${PR.ev.d>0?'+':''}${PR.ev.d}%`;
+    txt(c,el,mx,py+lineH*6.1,fit(el,pw-30,36),PR.ev.d>0?'#8dff8d':PR.ev.d<0?'#ff8f8f':'#fff','center');
+    const by=py+ph-bh-18;
+    if(PR.stage>0){const w2=(pw-60-18)/2;pbtn(c,'go','🎲 도전!',px+30,by,w2,bh,'#ff7a45',PR.phase==='stopped');pbtn(c,'stop','💾 멈추기',px+30+w2+18,by,w2,bh,'#4f8bff',PR.phase==='stopped')}
+    else pbtn(c,'go','🎲 도전!',px+30,by,bw,bh,'#ff7a45');
+    if(PR.stage===0)txt(c,'한 번 이겨야 멈출 수 있어요',mx,by-30,27,'#fff','center');
+  }else if(PR.phase==='timing'){
+    txt(c,'타이밍을 맞춰요!',mx,py+lineH*1.1,fit('타이밍을 맞춰요!',pw-40,48),'#ffd36b','center');
+    txt(c,'초록 가운데에서 멈추면 +12%',mx,py+lineH*2.2,fit('초록 가운데에서 멈추면 +12%',pw-30,33),'#fff','center');
+    const gx=px+36,gw=pw-72,gy=py+lineH*3.4,gh=54,hw=Math.max(.1,.18-.012*PR.stage);
+    c.fillStyle='#1b0f26';c.fillRect(sn(gx)-9,sn(gy)-9,sn(gw)+18,gh+18);
+    c.fillStyle='#d94a5a';c.fillRect(sn(gx),sn(gy),sn(gw),gh);
+    c.fillStyle='#ffb84a';c.fillRect(sn(mx-.42*gw/2),sn(gy),sn(.42*gw),gh);
+    c.fillStyle='#4fd16a';c.fillRect(sn(mx-hw*gw/2),sn(gy),sn(hw*gw),gh);
+    const kx=sn(mx+PR.pos*gw/2);c.fillStyle='#1b0f26';c.fillRect(kx-12,gy-18,24,gh+36);c.fillStyle='#fff';c.fillRect(kx-6,gy-12,12,gh+24);
+    pbtn(c,'go','⏱ 지금!',px+30,py+ph-bh-18,bw,bh,'#ff7a45');
+  }else if(PR.phase==='roll'){
+    txt(c,PR.bl,mx,py+lineH*1.3,fit(PR.bl,pw-30,45),PR.bonus===12?'#ffd23f':'#fff','center');
+    txt(c,'최종 확률 '+PR.fp+'%',mx,py+lineH*2.8,fit('최종 확률 99%',pw-30,42),'#fff','center');
+    const rv=PR.t<.9?(Math.floor(PR.t*14)%2?'🎲 두근…':'🎲 두근두근…'):(PR.ok?'✔ 성공!':'✖ 실패…');
+    txt(c,rv,mx,py+lineH*5.2,fit(rv,pw-30,66),PR.t<.9?'#fff':PR.ok?'#8dff8d':'#ff8f8f','center');
+  }else if(PR.phase==='up'){
+    txt(c,'🎉 승급 성공!',mx,py+lineH*2.5,fit('🎉 승급 성공!',pw-30,60),'#8dff8d','center');
+    txt(c,PST[PR.stage].n,mx,py+lineH*4.5,fit(PST[PR.stage].n,pw-30,51),'#ffd36b','center');
+  }else if(PR.phase==='fail'){
+    txt(c,'💥 미끄러졌다!',mx,py+lineH*2.5,fit('💥 미끄러졌다!',pw-30,60),'#ff8f8f','center');
+    txt(c,PR.reason,mx,py+lineH*5,fit(PR.reason,pw-30,36),'#fff','center');
+  }
+}
+
 /* ---------- menu ---------- */
 const pvc=$('pv').getContext('2d');
-function setHubStats(){$('hCoins').textContent=S.coins;$('gRunBest').textContent=S.best?'🏆 최고 '+S.best+'점':'';$('gRaceBest').textContent=S.wins?'🥇 우승 '+S.wins+'회':'';$('gManBest').textContent=S.mbest?'⏱ 최고 '+S.mbest.toFixed(1)+'초':''}
+function setHubStats(){$('hCoins').textContent=S.coins;$('gRunBest').textContent=S.best?'🏆 최고 '+S.best+'점':'';$('gRaceBest').textContent=S.wins?'🥇 우승 '+S.wins+'회':'';$('gManBest').textContent=S.mbest?'⏱ 최고 '+S.mbest.toFixed(1)+'초':'';$('gProBest').textContent=S.pbest?'🎲 최고 '+S.pbest+'단계':''}
 function openMenu(){
   state='menu';$('hub').classList.add('hide');$('over').classList.add('hide');$('pause').classList.add('hide');$('menu').classList.remove('hide');
-  $('mTitle').textContent=mode==='race'?'🏁 레일 레이스':mode==='manual'?'🛞 매뉴얼 버티기':'🪙 코인런';resetWorld();cam.x=0;cam.y=0;setUI();
+  $('mTitle').textContent=mode==='race'?'🏁 레일 레이스':mode==='manual'?'🛞 매뉴얼 버티기':mode==='pro'?'🎲 프로까지 가자':'🪙 코인런';resetWorld();cam.x=0;cam.y=0;setUI();
 }
 function showHub(){
   state='hub';$('menu').classList.add('hide');$('over').classList.add('hide');$('pause').classList.add('hide');$('hub').classList.remove('hide');
@@ -983,18 +1155,19 @@ function showHub(){
 $('gRun').onclick=()=>{ac();mode='run';openMenu()};
 $('gRace').onclick=()=>{ac();mode='race';openMenu()};
 $('gMan').onclick=()=>{ac();mode='manual';openMenu()};
+$('gPro').onclick=()=>{ac();mode='pro';openMenu()};
 $('toHub').onclick=showHub;
 const touch=(()=>{try{return/[?&]touch=1/.test(location.search)||matchMedia('(pointer:coarse)').matches||('ontouchstart' in window)}catch(e){return false}})();
 function refreshMenu(){
   const a=ANI[S.animal],own=S.owned.includes(S.animal);
   $('aName').textContent=a.name+(own?'':' 🔒');$('aSub').textContent=a.sub;$('bName').textContent=BOARDS[S.board].name;
-  $('tCoins').textContent=S.coins;$('tBestL').innerHTML=mode==='race'?'🥇 우승 <b>'+S.wins+'</b>회':mode==='manual'?'⏱ 최고 <b>'+S.mbest.toFixed(1)+'</b>초':'🏆 최고 <b>'+S.best+'</b>점';
-  $('hint').innerHTML=mode==='manual'?'👆 꾹 누르면 앞으로 · 떼면 뒤로 쏠려요<br>🟩 초록 구간 안에서 최대한 오래 버티기!<br>🌬 맞바람·점자블록·자갈길이 흔들어요':mode==='race'?(touch?'◀▶ 레일 이동 (화면 스와이프도 OK) · ⬆ 점프<br>코인 연속으로 먹으면 가속, 파란 패드는 부스트!':'← → 레일 이동 · Space 점프<br>코인 연속으로 먹으면 가속, 파란 패드는 부스트!'):(touch?'◀▶ 속도 조절 · ⬆ 점프(두 번 누르면 2단) · ✨ 공중에서 묘기!<br>코인을 모으고 적은 밟아요':'← → 속도 · Space 점프(2단) · ↓ / Z 공중 묘기 · P 일시정지<br>코인을 모으고 적은 밟아요');
-  $('play').textContent=own?'달리기!':`🔒 ${a.price}🪙로 열기`;$('play').classList.toggle('alt',!own);
+  $('tCoins').textContent=S.coins;$('tBestL').innerHTML=mode==='race'?'🥇 우승 <b>'+S.wins+'</b>회':mode==='manual'?'⏱ 최고 <b>'+S.mbest.toFixed(1)+'</b>초':mode==='pro'?'🎲 최고 <b>'+S.pbest+'</b>단계':'🏆 최고 <b>'+S.best+'</b>점';
+  $('hint').innerHTML=mode==='pro'?'🎲 입문부터 월드 챔피언까지 6번의 승급 도전<br>⏱ 타이밍 게이지를 맞추면 확률 +12%<br>💾 멈추면 기록 저장 · 실패하면 부상 초기화!':mode==='manual'?'👆 꾹 누르면 앞으로 · 떼면 뒤로 쏠려요<br>🟩 초록 구간 안에서 최대한 오래 버티기!<br>🌬 맞바람·점자블록·자갈길이 흔들어요':mode==='race'?(touch?'◀▶ 레일 이동 (화면 스와이프도 OK) · ⬆ 점프<br>코인 연속으로 먹으면 가속, 파란 패드는 부스트!':'← → 레일 이동 · Space 점프<br>코인 연속으로 먹으면 가속, 파란 패드는 부스트!'):(touch?'◀▶ 속도 조절 · ⬆ 점프(두 번 누르면 2단) · ✨ 공중에서 묘기!<br>코인을 모으고 적은 밟아요':'← → 속도 · Space 점프(2단) · ↓ / Z 공중 묘기 · P 일시정지<br>코인을 모으고 적은 밟아요');
+  $('play').textContent=own?(mode==='pro'?'도전 시작!':'달리기!'):`🔒 ${a.price}🪙로 열기`;$('play').classList.toggle('alt',!own);
 }
 function setUI(){
   $('top').style.display=(state==='play'||state==='pause')?'flex':'none';
-  $('ctl').style.display=(touch&&mode!=='manual'&&(state==='play'||state==='pause'))?'flex':'none';
+  $('ctl').style.display=(touch&&mode!=='manual'&&mode!=='pro'&&(state==='play'||state==='pause'))?'flex':'none';
   $('cT').style.display=mode==='race'?'none':'';
   $('rot').classList.toggle('show',innerHeight>innerWidth&&state!=='play');
   refreshMenu();
@@ -1017,7 +1190,7 @@ $('toMenu').onclick=()=>openMenu();
 function pause(){if(state!=='play')return;state='pause';$('pause').classList.remove('hide');setUI()}
 function resume(){if(state!=='pause')return;state='play';if(M)M.hold=false;$('pause').classList.add('hide');setUI()}
 $('resume').onclick=resume;
-$('quit').onclick=()=>{if(mode==='manual'){}else if(mode==='race'){S.coins+=R.coins}else{S.coins+=P.coins;const sc=score();if(sc>S.best)S.best=sc}save();setHubStats();openMenu()};
+$('quit').onclick=()=>{if(mode==='manual'||mode==='pro'){}else if(mode==='race'){S.coins+=R.coins}else{S.coins+=P.coins;const sc=score();if(sc>S.best)S.best=sc}save();setHubStats();openMenu()};
 $('bPause').onclick=pause;
 $('bMute').onclick=()=>{muted=!muted;$('bMute').textContent=muted?'🔇':'🔊'};
 document.addEventListener('visibilitychange',()=>{if(document.hidden)pause()});
@@ -1027,6 +1200,7 @@ const KM={ArrowLeft:'l',KeyA:'l',ArrowRight:'r',KeyD:'r'};
 addEventListener('keydown',e=>{
   const isJump=e.code==='Space'||e.code==='ArrowUp'||e.code==='KeyW';
   if(e.repeat&&(isJump||KM[e.code]))return;
+  if(mode==='pro'&&state==='play'){if(isJump||e.code==='Enter'){e.preventDefault();proAct('go')}else if(e.code==='ArrowDown'||e.code==='KeyS'){e.preventDefault();proAct('stop')}else if(e.code==='KeyP'||e.code==='Escape')pause();return}
   if(KM[e.code]){e.preventDefault();if(mode==='race')laneMove(KM[e.code]==='l'?-1:1);else keys[KM[e.code]]=1}
   if(isJump){e.preventDefault();if(state==='play'){if(mode==='manual')mHold(true);else if(mode==='race')raceJump();else{keys.j=1;P.buf=.12}}else if(state==='over')startRun()}
   if(e.code==='ArrowDown'||e.code==='KeyS'||e.code==='KeyZ'||e.code==='ShiftLeft'||e.code==='KeyX'){e.preventDefault();doTrick()}
@@ -1043,7 +1217,7 @@ bindBtn('cR',()=>{if(mode==='race')laneMove(1);else keys.r=1},()=>keys.r=0);
 bindBtn('cJ',()=>{if(state!=='play')return;if(mode==='race')raceJump();else{keys.j=1;P.buf=.12}},()=>keys.j=0);
 bindBtn('cT',()=>doTrick(),null);
 let sw=null;
-cv.addEventListener('pointerdown',e=>{ac();if(state==='play'&&mode==='manual'){try{cv.setPointerCapture(e.pointerId)}catch(_){}mHold(true)}if(state==='play'&&mode==='race'){sw={x:e.clientX,y:e.clientY,moved:false}}});
+cv.addEventListener('pointerdown',e=>{ac();if(state==='play'&&mode==='pro'){proTap(e.clientX/innerWidth*VW,e.clientY/innerHeight*VH)}if(state==='play'&&mode==='manual'){try{cv.setPointerCapture(e.pointerId)}catch(_){}mHold(true)}if(state==='play'&&mode==='race'){sw={x:e.clientX,y:e.clientY,moved:false}}});
 cv.addEventListener('pointermove',e=>{if(!sw)return;const dx=e.clientX-sw.x;if(Math.abs(dx)>34){laneMove(dx>0?1:-1);sw.x=e.clientX;sw.moved=true}});
 cv.addEventListener('pointerup',e=>{mHold(false);if(sw&&!sw.moved&&Math.abs(e.clientY-sw.y)<12)raceJump();sw=null});
 cv.addEventListener('pointercancel',()=>{sw=null;mHold(false)});
@@ -1056,13 +1230,13 @@ function drawRacerPv(g){
 }
 function frame(now){
   const dt=Math.min(.033,(now-last)/1000);last=now;
-  if(state==='play'){if(mode==='manual')updateManual(dt);else if(mode==='race')updateRace(dt);else{updatePlay(dt);stepAll(dt)}}
+  if(state==='play'){if(mode==='manual')updateManual(dt);else if(mode==='pro')updatePro(dt);else if(mode==='race')updateRace(dt);else{updatePlay(dt);stepAll(dt)}}
   else if(state==='dying'){updateDying(dt);stepAll(dt)}
   else if(state==='menu'||state==='hub'){cam.x+=70*dt;cam.y=-40;menuT+=dt;stepAll(dt)}
   else if(state==='over'&&mode==='run'){stepAll(dt*.2)}
   ctx.setTransform(1/3,0,0,1/3,0,0);ctx.imageSmoothingEnabled=false;
   tx.setTransform(1,0,0,1,0,0);tx.clearRect(0,0,tc.width,tc.height);
-  if(mode==='manual'&&M&&(state==='play'||state==='pause'||state==='over'))renderManual(ctx);else if(mode==='race'&&R&&(state==='play'||state==='pause'||state==='over'))renderRace(ctx);else renderRun(ctx);
+  if(mode==='pro'&&PR&&(state==='play'||state==='pause'||state==='over'))renderPro(ctx);else if(mode==='manual'&&M&&(state==='play'||state==='pause'||state==='over'))renderManual(ctx);else if(mode==='race'&&R&&(state==='play'||state==='pause'||state==='over'))renderRace(ctx);else renderRun(ctx);
   if(state==='menu'){
     pvc.setTransform(1,0,0,1,0,0);pvc.imageSmoothingEnabled=false;pvc.clearRect(0,0,200,170);
     pvc.save();pvc.translate(100,160);pvc.fillStyle='rgba(0,0,0,.25)';pvc.fillRect(-46,0,92,5);
@@ -1073,7 +1247,7 @@ function frame(now){
   }
   requestAnimationFrame(frame);
 }
-window.__dbg={get M(){return M},mHold,get P(){return P},get R(){return R},get state(){return state},get mode(){return mode},get segs(){return segs},get enemies(){return enemies},get items(){return items},keys,startRun,get cam(){return cam},S,die,
+window.__dbg={get PR(){return PR},proAct,proTap,get M(){return M},mHold,get P(){return P},get R(){return R},get state(){return state},get mode(){return mode},get segs(){return segs},get enemies(){return enemies},get items(){return items},keys,startRun,get cam(){return cam},S,die,
   setMode:m=>{mode=m},setBoard:b=>{S.board=b},setAnimal:a=>{S.animal=a},doTrick,jump:()=>{keys.j=1;P.buf=.12;setTimeout(()=>keys.j=0,120)},laneMove,raceJump};
 resize();showHub();requestAnimationFrame(frame);
 })();
